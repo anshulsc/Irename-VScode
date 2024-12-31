@@ -1,4 +1,4 @@
-```markdown
+
 # IRename: Intelligent Code Renaming Assistant
 
 ## Overview
@@ -116,7 +116,7 @@ public class Example {
         return counter;
     }
 }
-```
+
 
 **Request:**
 
