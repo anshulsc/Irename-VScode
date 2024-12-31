@@ -31,6 +31,7 @@ def find_variable_at_position(code, line, char):
     """
     try:
         tokens = list(javalang.tokenizer.tokenize(code))
+
         
         # 1) Find the token at (line, char)
         found_token = None
@@ -42,6 +43,7 @@ def find_variable_at_position(code, line, char):
                     found_token = t
                     break
         
+        print(f"Found token: {found_token}")
         # 2) Check if we found a token
         if not found_token:
             return None, None, "No token found at that position."
@@ -56,6 +58,7 @@ def find_variable_at_position(code, line, char):
             if isinstance(t, javalang.tokenizer.Identifier) and t.value == variable_name:
                 occurrences.append([t.position.line, t.position.column])
 
+        print(f"occurrences: {occurrences}")
         return variable_name, occurrences, None
 
     except Exception as e:

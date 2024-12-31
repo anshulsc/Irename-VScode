@@ -28,6 +28,10 @@ export async function renameIdentifier(uri: vscode.Uri, line: number, char: numb
 
         if (selected) {
             const selectedSuggestion = selected.label;
+
+            // print the selected suggestion
+            console.log(selectedSuggestion);
+
             const occurrences = findOccurrencesInDocument(document, line, char);
             // Apply the selected suggestion
             await editor.edit(editBuilder => {
@@ -64,14 +68,16 @@ export async function renameIdentifier(uri: vscode.Uri, line: number, char: numb
 
 function findOccurrencesInDocument(document: vscode.TextDocument, line: number, char: number): vscode.Range[] {
     const occurrences: vscode.Range[] = [];
-    const targetLine = document.lineAt(line);
-    const wordRange = document.getWordRangeAtPosition(new vscode.Position(line, char));
+    const targetLine = document.lineAt(line - 1);
+    const wordRange = document.getWordRangeAtPosition(new vscode.Position(line - 1, char - 1));
 
     if (!wordRange || wordRange.isEmpty) {
         return occurrences;
     }
 
+    
     const targetWord = document.getText(wordRange);
+    console.log(targetWord);
 
     for (let i = 0; i < document.lineCount; i++) {
         const line = document.lineAt(i);

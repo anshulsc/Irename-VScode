@@ -21,9 +21,9 @@ export class RenameCodeActionProvider implements vscode.CodeActionProvider {
         // Create a CodeAction to trigger the renaming command
         const codeAction = new vscode.CodeAction('Rename Identifier (ReNameIt)', vscode.CodeActionKind.RefactorRewrite);
         codeAction.command = {
-            command: 'renameit.renameIdentifier',
+            command: 'irename.renameIdentifier',
             title: 'Rename Identifier',
-            arguments: [document.uri, identifierRange.start.line, identifierRange.start.character, -1], // -1 for automatic mode
+            arguments: [document.uri, identifierRange.start.line + 1, identifierRange.start.character + 1, -1], // -1 for automatic mode
         };
 
         return [codeAction];

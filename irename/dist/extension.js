@@ -10826,7 +10826,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode2 = __toESM(require("vscode"));
+var vscode6 = __toESM(require("vscode"));
 
 // node_modules/axios/lib/helpers/bind.js
 function bind(fn, thisArg) {
@@ -14137,6 +14137,7 @@ async function renameIdentifier(uri, line, char, num_tokens) {
     });
     if (selected) {
       const selectedSuggestion = selected.label;
+      console.log(selectedSuggestion);
       const occurrences = findOccurrencesInDocument(document2, line, char);
       await editor.edit((editBuilder) => {
         for (const occurrence of occurrences) {
@@ -14166,12 +14167,13 @@ async function renameIdentifier(uri, line, char, num_tokens) {
 }
 function findOccurrencesInDocument(document2, line, char) {
   const occurrences = [];
-  const targetLine = document2.lineAt(line);
-  const wordRange = document2.getWordRangeAtPosition(new vscode.Position(line, char));
+  const targetLine = document2.lineAt(line - 1);
+  const wordRange = document2.getWordRangeAtPosition(new vscode.Position(line - 1, char - 1));
   if (!wordRange || wordRange.isEmpty) {
     return occurrences;
   }
   const targetWord = document2.getText(wordRange);
+  console.log(targetWord);
   for (let i = 0; i < document2.lineCount; i++) {
     const line2 = document2.lineAt(i);
     let index = line2.text.indexOf(targetWord);
@@ -14192,22 +14194,113 @@ function findOccurrencesInDocument(document2, line, char) {
   return occurrences;
 }
 
+// src/providers/RenameCodeActionProvider.ts
+var vscode2 = __toESM(require("vscode"));
+var RenameCodeActionProvider = class {
+  static providedCodeActionKinds = [
+    vscode2.CodeActionKind.RefactorRewrite
+  ];
+  provideCodeActions(document2, range, context, token) {
+    const identifierRange = document2.getWordRangeAtPosition(range.start);
+    if (!identifierRange) {
+      return [];
+    }
+    const codeAction = new vscode2.CodeAction("Rename Identifier (ReNameIt)", vscode2.CodeActionKind.RefactorRewrite);
+    codeAction.command = {
+      command: "irename.renameIdentifier",
+      title: "Rename Identifier",
+      arguments: [document2.uri, identifierRange.start.line + 1, identifierRange.start.character + 1, -1]
+      // -1 for automatic mode
+    };
+    return [codeAction];
+  }
+};
+
+// src/commands/toggleAutomaticRenaming.ts
+var vscode3 = __toESM(require("vscode"));
+async function toggleAutomaticRenaming() {
+  const config = vscode3.workspace.getConfiguration("irename");
+  const currentValue = config.get("automaticRenaming", false);
+  await config.update("automaticRenaming", !currentValue, vscode3.ConfigurationTarget.Global);
+  vscode3.window.showInformationMessage(`Automatic renaming is now ${!currentValue ? "enabled" : "disabled"}`);
+}
+
+// src/providers/RenameHoverProvider.ts
+var vscode5 = __toESM(require("vscode"));
+
+// src/utils/apiClient.ts
+var vscode4 = __toESM(require("vscode"));
+var apiClient = axios_default.create();
+apiClient.interceptors.request.use((config) => {
+  const serverUrl = vscode4.workspace.getConfiguration("renameit").get("serverUrl");
+  config.baseURL = serverUrl;
+  return config;
+});
+
+// src/providers/RenameHoverProvider.ts
+var RenameHoverProvider = class {
+  async provideHover(document2, position, token) {
+    const config = vscode5.workspace.getConfiguration("renameit");
+    const isAutomaticRenamingEnabled = config.get("automaticRenaming", false);
+    if (!isAutomaticRenamingEnabled) {
+      return null;
+    }
+    const identifierRange = document2.getWordRangeAtPosition(position);
+    if (!identifierRange) {
+      return null;
+    }
+    const line = identifierRange.start.line;
+    const char = identifierRange.start.character;
+    const code = document2.getText();
+    const num_tokens = -1;
+    try {
+      const response = await apiClient.post("/rename/", { code, line, char, num_tokens });
+      const suggestions = response.data.suggestions;
+      const probabilities = response.data.probabilities;
+      if (suggestions.length === 0) {
+        return null;
+      }
+      let hoverContent = new vscode5.MarkdownString();
+      hoverContent.appendMarkdown("**ReNameIt Suggestions:**\n\n");
+      suggestions.forEach((suggestion, index) => {
+        hoverContent.appendMarkdown(`- ${suggestion} (Probability: ${probabilities[index].toFixed(2)})
+`);
+      });
+      return new vscode5.Hover(hoverContent);
+    } catch (error) {
+      console.error("Error fetching suggestions for hover:", error);
+      return null;
+    }
+  }
+};
+
 // src/extension.ts
 function activate(context) {
   console.log('Congratulations, your extension "renameit" is now active!');
-  let disposable = vscode2.commands.registerCommand("irename.ping", async () => {
+  let disposable = vscode6.commands.registerCommand("irename.ping", async () => {
     try {
       const response = await axios_default.get("http://127.0.0.1:8000/");
-      vscode2.window.showInformationMessage(response.data.message);
+      vscode6.window.showInformationMessage(response.data.message);
     } catch (error) {
-      vscode2.window.showErrorMessage("Error connecting to server.");
+      vscode6.window.showErrorMessage("Error connecting to server.");
     }
   });
   context.subscriptions.push(disposable);
   context.subscriptions.push(
-    vscode2.commands.registerCommand("irename.renameIdentifier", (uri, line, char) => {
+    vscode6.commands.registerCommand("irename.renameIdentifier", (uri, line, char) => {
       renameIdentifier(uri, line, char, -1);
     })
+  );
+  context.subscriptions.push(
+    vscode6.languages.registerCodeActionsProvider("java", new RenameCodeActionProvider(), {
+      providedCodeActionKinds: RenameCodeActionProvider.providedCodeActionKinds
+    })
+  );
+  context.subscriptions.push(
+    vscode6.commands.registerCommand("irename.toggleAutomaticRenaming", toggleAutomaticRenaming)
+  );
+  context.subscriptions.push(
+    vscode6.languages.registerHoverProvider("java", new RenameHoverProvider())
   );
 }
 function deactivate() {
