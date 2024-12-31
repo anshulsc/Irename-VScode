@@ -6,114 +6,170 @@ from transformers import AutoModelForMaskedLM, AutoTokenizer
 
 def generate_identifier_candidates(code_snippet, num_mask_tokens, model, tokenizer):
     """
-    Generates identifier name candidates for a masked code snippet using a language model.
-
-    Args:
-        code_snippet (str): The Java code snippet with the identifier replaced by [MASK] tokens.
-        num_mask_tokens (int): The number of [MASK] tokens to use (representing the desired number of subtokens).
-        model (AutoModelForMaskedLM): The pre-trained language model.
-        tokenizer (AutoTokenizer): The tokenizer corresponding to the model.
+    Generates an identifier prediction for `code_snippet` (which contains "[MASK]"),
+    replacing "[MASK]" with `num_mask_tokens` mask tokens, then performing
+    a forward pass and picking the best alphabetical token(s).
 
     Returns:
-        tuple: A tuple containing:
-            - str: The highest-scoring candidate identifier name.
-            - float: The rounded average negative log-likelihood (PLL) of the prediction.
+        (predicted_identifier, avg_pll)
+            predicted_identifier: str
+            avg_pll: float
     """
-    
-    # Prepare the input by adding spaces around [MASK] tokens
-    X_init = code_snippet
-    X_init = X_init.replace("[MASK]", " [MASK] ")
+
+    # 1) Replace the single [MASK] placeholder with `num_mask_tokens` sub-tokens
+    X_init = code_snippet.replace("[MASK]", " [MASK] ")
     X_init = X_init.replace("[MASK]", " ".join([tokenizer.mask_token] * num_mask_tokens))
 
-    # Tokenize the input
-    tokens = tokenizer.encode_plus(X_init, add_special_tokens=False, return_tensors='pt')
-    
-    # Split the input into chunks to handle sequences longer than the model's maximum length
-    input_id_chunks = tokens['input_ids'][0].split(510)
-    mask_chunks = tokens['attention_mask'][0].split(510)
+    print(X_init)
 
-    # Add special tokens ([CLS] and [SEP]) and pad the chunks
-    input_id_chunks = [torch.cat([torch.full((1,), fill_value=101), chunk, torch.full((1,), fill_value=102)]) for chunk in input_id_chunks]
-    mask_chunks = [torch.cat([torch.full((1,), fill_value=1), chunk, torch.full((1,), fill_value=1)]) for chunk in mask_chunks]
+    # 2) Tokenize without adding special tokens (we'll add them manually)
+    encoding = tokenizer.encode_plus(
+        X_init,
+        add_special_tokens=False,  # We'll do [CLS]/[SEP] manually
+        return_tensors='pt'
+    )
     
-    # Pad chunks to the maximum length (512)
-    padded_input_ids = [torch.cat([chunk, torch.full((512 - chunk.shape[0],), fill_value=0)]) if chunk.shape[0] < 512 else chunk for chunk in input_id_chunks]
-    padded_mask_chunks = [torch.cat([chunk, torch.full((512 - chunk.shape[0],), fill_value=0)]) if chunk.shape[0] < 512 else chunk for chunk in mask_chunks]
+    input_ids_full = encoding['input_ids'][0]          # shape: [seq_len]
 
-    # Find the positions of the masked tokens
+    attention_mask_full = encoding['attention_mask'][0]
+
+
+    # 3) Split into 510-token chunks (so we can add [CLS]/[SEP])
+    # Convert the tuple to a list
+
+    input_id_chunks = list(input_ids_full.split(510))
+    mask_chunks     = list(attention_mask_full.split(510))
+
+
+
+    # 4) Prepend [CLS] (ID=101) and append [SEP] (ID=102) to each chunk;
+    #    also do the same for the attention mask.
+    CLS_ID = torch.full((1,), 101, dtype=torch.long)
+    SEP_ID = torch.full((1,), 102, dtype=torch.long)
+    ATT_1  = torch.full((1,), 1,   dtype=torch.long)
+    PAD_0  = torch.full((1,), 0,   dtype=torch.long)
+
+
+    for i in range(len(input_id_chunks)):
+        input_id_chunks[i] = torch.cat([CLS_ID, input_id_chunks[i], SEP_ID], dim=-1)
+
+        mask_chunks[i]     = torch.cat([ATT_1,  mask_chunks[i],     ATT_1 ], dim=-1)
+
+    # 5) Pad each chunk to length 512
+    for i in range(len(input_id_chunks)):
+        length = input_id_chunks[i].size(0)
+        if length < 512:
+            pad_len = 512 - length
+            input_id_chunks[i] = torch.cat([input_id_chunks[i], PAD_0.repeat(pad_len)], dim=-1)
+            mask_chunks[i]     = torch.cat([mask_chunks[i],     PAD_0.repeat(pad_len)], dim=-1)
+
+    # 6) Identify the positions of the first token in each [MASK] block
     mask_positions = []
-    for i, chunk in enumerate(padded_input_ids):
-        chunk_mask_positions = []
-        for j, token_id in enumerate(chunk):
-            if token_id == tokenizer.mask_token_id:
-                if j != 0 and padded_input_ids[i][j-1] == tokenizer.mask_token_id:
-                    continue
-                chunk_mask_positions.append(j)
-        mask_positions.append(chunk_mask_positions)
+    for chunk_tensor in input_id_chunks:
+        positions = []
+        j = 0
+        while j < chunk_tensor.size(0):
+            if chunk_tensor[j].item() == tokenizer.mask_token_id:
+                # If consecutive masks, skip until we find the next block
+                positions.append(j)
+                while j < chunk_tensor.size(0) and chunk_tensor[j].item() == tokenizer.mask_token_id:
+                    j += 1
+            else:
+                j += 1
+        mask_positions.append(positions)
 
-    # Convert lists to tensors
-    input_ids = torch.stack(padded_input_ids)
-    att_mask = torch.stack(padded_mask_chunks)
 
-    # Move tensors to the same device as the model
-    input_ids = input_ids.to(model.device)
-    att_mask = att_mask.to(model.device)
+    # 7) Stack for model input
+    batch_input_ids = torch.stack(input_id_chunks)   # shape: [n_chunks, 512]
+    batch_att_mask  = torch.stack(mask_chunks)       # same shape
 
-    # Model inference
+    batch_input_ids = batch_input_ids.to(model.device)
+    batch_att_mask  = batch_att_mask.to(model.device)
+
+    # 8) Forward pass -> get logits of shape [batch_size, seq_len, vocab_size]
     with torch.no_grad():
-        outputs = model(input_ids, attention_mask=att_mask)
-        last_hidden_state = outputs.last_hidden_state
+        outputs = model(batch_input_ids, attention_mask=batch_att_mask)
+        logits = outputs.logits  # or outputs[0]
 
-    # Aggregate hidden states of masked tokens
-    aggregated_states = []
+    # 9) For each subtoken index, gather & average the logits from all chunk positions
+    #    If `num_mask_tokens` = 3, we look at positions [mask_pos, mask_pos+1, mask_pos+2].
+    subtoken_averages = []
     for t in range(num_mask_tokens):
-        token_states = []
-        for p in range(len(mask_positions)):
-            for mask_pos in mask_positions[p]:
-                token_states.append(last_hidden_state[p, mask_pos + t])
-        aggregated_states.append(torch.stack(token_states).mean(dim=0))
+        # We'll gather the t-th subtoken's logits
+        subtoken_logits = []
+        for chunk_idx, positions in enumerate(mask_positions):
+            for start_pos in positions:
+                pos = start_pos + t
+                if pos < 512:
+                    subtoken_logits.append(logits[chunk_idx, pos])  # shape: [vocab_size]
+        if len(subtoken_logits) > 0:
+            # Average across all occurrences
+            subtoken_averages.append(torch.stack(subtoken_logits).mean(dim=0))
+        else:
+            # If no positions found, skip (rare edge case)
+            pass
 
-    # Predict subtokens and calculate PLL
-    predicted_name = ""
+    # 10) Decode predicted tokens + accumulate negative log-prob (PLL)
+    predicted_identifier = ""
     total_pll = 0.0
-    for i, state in enumerate(aggregated_states):
-        top_indices = torch.topk(state, k=5, dim=0).indices
-        probs = F.softmax(state, dim=0)
-        
-        for index in top_indices:
-            token = tokenizer.decode(index.item()).strip()
-            if token.isalpha():
-                predicted_name += token
-                total_pll -= torch.log(probs[index]).item()
+
+    for avg_logit in subtoken_averages:
+        prob_vector = F.softmax(avg_logit, dim=-1)
+        topk_ids    = torch.topk(avg_logit, k=5).indices
+
+        chosen_str = None
+        chosen_id  = None
+        for candidate_id in topk_ids:
+            tok_str = tokenizer.decode(candidate_id.item()).strip()
+            if tok_str.isalpha():  # pick the first alphabetical token
+                chosen_str = tok_str
+                chosen_id  = candidate_id
                 break
 
-    avg_pll = round(total_pll / num_mask_tokens, 2)
+        if chosen_str is None:
+            # fallback: pick the top token even if not purely alphabetical
+            chosen_id  = topk_ids[0]
+            chosen_str = tokenizer.decode(chosen_id.item()).strip()
 
-    return predicted_name, avg_pll
+        predicted_identifier += chosen_str
+        # Negative log prob = -log(prob of chosen token)
+        total_pll -= torch.log(prob_vector[chosen_id]).item()
+
+    # 11) Average PLL over the number of sub-tokens
+    avg_pll = 0.0
+    if num_mask_tokens > 0:
+        avg_pll = round(total_pll / num_mask_tokens, 2)
+
+
+
+    return predicted_identifier, avg_pll
+
 
 def select_best_identifier(code_snippet, model, tokenizer, max_num_tokens=6):
     """
-    Selects the best identifier name for a masked code snippet based on PLL scores 
-    across a range of possible subtoken numbers.
-
-    Args:
-        code_snippet (str): The Java code snippet with the identifier replaced by [MASK] tokens.
-        model (AutoModelForMaskedLM): The pre-trained language model.
-        tokenizer (AutoTokenizer): The tokenizer corresponding to the model.
-        max_num_tokens (int): The maximum number of subtokens to consider.
-
-    Returns:
-        str: The best identifier name based on PLL scores.
+    Equivalent to the 'meet(...)' function style:
+    Tries multiple sub-token counts from 1..max_num_tokens,
+    picks the best (lowest PLL).
     """
-    
-    best_name = ""
-    best_pll = float('inf')
 
-    for num_tokens in range(1, max_num_tokens + 1):
-        name, pll = generate_identifier_candidates(code_snippet, num_tokens, model, tokenizer)
-        print(f"Prediction with {num_tokens} token(s): {name} (PLL: {pll})")
+    best_identifier = ""
+    best_pll = float('inf')
+    logs = []
+
+    # Try subtoken counts 1..max_num_tokens
+    for n_sub in range(1, max_num_tokens + 1):
+        name, pll = generate_identifier_candidates(code_snippet, n_sub, model, tokenizer)
+        logs.append(f"Prediction with {n_sub} token(s): {name} (PLL: {pll})")
+        print(logs[-1])
+
         if pll < best_pll:
             best_pll = pll
-            best_name = name
+            best_identifier = name
 
-    return f"The best identifier name (based on PLL) is: {best_name}"
+    # Optional: print or return the logs
+    # for line in logs:
+    #     print(line)
+
+    print(f"The best identifier name (based on PLL) is: {best_identifier}")
+
+    return best_identifier

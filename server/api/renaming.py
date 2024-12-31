@@ -18,21 +18,21 @@ class RenameRequest(BaseModel):
 
 class RenameResponse(BaseModel):
     suggestions: list[str]
-    probablities: list[float]
+    probabilities: list[float]  
 
 
 
 
 def find_variable_at_position(code, line, char):
     """
-    Finds the variable name and its occurrences using tokens to identify the variable at the specified (line,char).
+    Finds the variable name at the specified (line,char) in the code
+    and collects all its occurrences by scanning tokenizer tokens only.
+    This avoids the need for valid Java AST parsing.
     """
     try:
         tokens = list(javalang.tokenizer.tokenize(code))
-        lines = code.split('\n')
-        if line < 1 or line > len(lines):
-            return None, None, "Line is out of range."
-
+        
+        # 1) Find the token at (line, char)
         found_token = None
         for t in tokens:
             if t.position and t.position.line == line:
@@ -41,39 +41,22 @@ def find_variable_at_position(code, line, char):
                 if start_col <= char <= end_col:
                     found_token = t
                     break
-
+        
+        # 2) Check if we found a token
         if not found_token:
             return None, None, "No token found at that position."
         if not isinstance(found_token, javalang.tokenizer.Identifier):
             return None, None, "Token at position is not an identifier."
 
         variable_name = found_token.value
-        print(variable_name)
-        tree = javalang.parse.parse(code)
-
+        
+        # 3) Find all occurrences of that token in the code
         occurrences = []
-        for _, node in tree:
-            if hasattr(node, 'position') and node.position:
-                print(f"{node.position.line}, {node.position.column}")
-                if isinstance(node, javalang.tree.LocalVariableDeclaration):
-                    for decl in node.declarators:
-
-                        print(f"Decl: {decl.name}")
-                        if decl.name == variable_name:
-                            print(f"Decl: {decl}")
-                            print(decl.position.line, decl.position.column)
-                            occurrences.append((decl.position.line, decl.position.column))
-                elif isinstance(node, (javalang.tree.MemberReference,
-                                       javalang.tree.VariableDeclarator)):
-                    if (hasattr(node, 'member') and node.member == variable_name) or \
-                       (hasattr(node, 'name') and node.name == variable_name):
-                        occurrences.append((node.position.line, node.position.column))
-
-        print(occurrences)
-        print(variable_name)
+        for t in tokens:
+            if isinstance(t, javalang.tokenizer.Identifier) and t.value == variable_name:
+                occurrences.append([t.position.line, t.position.column])
 
         return variable_name, occurrences, None
-    
 
     except Exception as e:
         return None, None, f"Error parsing Java code: {e}"
@@ -145,6 +128,8 @@ async def rename_identifier(request: RenameRequest):
             masked_code, (request.line, request.char), request.num_tokens
         )
 
-        return RenameResponse(suggestions=[print_str], probabilities=probabilities)
+        print(f"Predicted identifier: {print_str}")
+        print(f"Probabilities: {probabilities}")
+        return RenameResponse(suggestions=[print_str[0]], probabilities=[probabilities[0]])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
