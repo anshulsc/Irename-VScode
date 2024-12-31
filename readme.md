@@ -1,20 +1,8 @@
 
-# IRename: Intelligent Code Renaming Assistant
+# IRename: Vs code Extenstion 
 
-## Overview
 
-**IRename** is a tool designed to assist developers in renaming identifiers within Java code snippets. Leveraging the power of deep learning, specifically a fine-tuned [GraphCodeBERT](https://huggingface.co/microsoft/graphcodebert-base) model, IRename provides intelligent suggestions for identifier names based on the surrounding code context. This project was developed for the SCAM 2024 research project.
 
-## Features
-
-- **Context-Aware Suggestions:**  IRename analyzes the code context to suggest meaningful and relevant identifier names.
-- **Multiple Token Handling:** Supports generating names consisting of multiple subtokens (e.g., `newVariableName`).
-- **Automatic and Manual Modes:**
-    - **Automatic:**  Determines the optimal number of subtokens for the identifier name using a probabilistic approach (lowest Pseudo-Perplexity, PLL).
-    - **Manual:** Allows users to specify the desired number of subtokens.
-- **REST API:**  Exposes functionality through a RESTful API, making it easy to integrate with other tools or IDEs.
-- **FastAPI Backend:** Built with FastAPI for high performance and easy deployment.
-- **javalang-based Tokenizer:**  Uses `javalang` for fast and reliable Java code tokenization, even with invalid or incomplete code.
 
 ## Architecture
 
