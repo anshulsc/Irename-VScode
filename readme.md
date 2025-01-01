@@ -6,11 +6,17 @@
 ### Walkthrough (VS Code Extension - dev mode)
 
 [![Watch the video](misc/first.png)](https://youtu.be/hvkGQlqxshU)
+### Embedded Video
+
+<video width="640" height="480" controls>
+    <source src="misc/mov.mp4" type="video/mp4">
+</video>
+
 ## Architecture
 
 The system consists of two main parts:
 
-1. **VS Code Extension (Frontend):** The extension provides the user interface within VS Code, handles user interactions, and communicates with the backend server. (`client` directory)
+1. **VS Code Extension (Frontend):** The extension provides the user interface within vVS Code, handles user interactions, and communicates with the backend server. (`client` directory)
 2. **FastAPI Backend (Server):** The backend exposes a REST API for code analysis and suggestion generation. It loads the fine-tuned GraphCodeBERT model, performs inference, and handles Java code parsing. (`server` directory)
 
 ### Detailed Components:
