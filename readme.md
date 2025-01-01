@@ -5,7 +5,10 @@
 
 ## Walkthrough (VS Code Extension - dev mode)
 
-You can watch a quick demonstration in this [Video](misc/mov.mp4).
+<video width="640" height="360" controls>
+    <source src="misc/mov.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+</video>
 
 ## Architecture
 
