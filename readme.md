@@ -3,14 +3,11 @@
 # ReNameIt: (VS Code Extension)
 
 
-### Walkthrough (VS Code Extension - dev mode)
+### Walkthrough Video (VS Code Extension - dev mode)
 
 [![Watch the video](misc/first.png)](https://youtu.be/hvkGQlqxshU)
 ### Embedded Video
 
-<video width="640" height="480" controls>
-    <source src="misc/mov.mp4" type="video/mp4">
-</video>
 
 ## Architecture
 
