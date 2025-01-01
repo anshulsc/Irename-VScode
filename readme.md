@@ -97,16 +97,12 @@ The system consists of two main parts:
 
 1. **Navigate to the `server` directory:**
     ```bash
+    source .venv/bin/activate  # On macOS/Linux
+    # .\.venv\Scripts\activate  # On Windows
     cd server
     ```
 
-2. **Activate the virtual environment:**
-    ```bash
-    source .venv/bin/activate  # On macOS/Linux
-    # .\.venv\Scripts\activate  # On Windows
-    ```
-
-3. **Start the server:**
+2. **Start the server:**
     ```bash
     uvicorn main:app --reload
     ```
@@ -189,13 +185,3 @@ value (Probability: 4.56)
 count (Probability: 3.81)
 ...other suggestions...
 ```
-
-## Troubleshooting
-
-*   **Server not running:** Make sure the FastAPI server is running in a separate terminal.
-*   **Extension not communicating with server:** Check the `renameit.serverUrl` setting in your VS Code settings. Verify that the server URL is correct and that the server is accessible.
-*   **No suggestions provided:**
-    *   Make sure the cursor is positioned correctly on an identifier.
-    *   Check the server logs for any errors during model inference or Java parsing.
-    *   Ensure that your model is loaded correctly and that the paths in `model.py` are accurate.
-*   **Errors during model inference:**  If you encounter errors related to the model, double-check that you have downloaded the correct model files and that they are placed in the `model_artifacts` directory. Also, ensure that your `greet` and `meet` functions in `inference.py` are correctly implemented and handle different scenarios properly.
