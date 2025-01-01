@@ -1,96 +1,166 @@
 
-# IRename: Vs code Extenstion 
+
+# ReNameIt: (VS Code Extension)
 
 
+## Walkthrough (VS Code Extension - dev mode)
 
+You can watch a quick demonstration in this [YouTube Video](https://www.youtube.com/watch?v=B6PKVZq2qqo).
 
 ## Architecture
 
-The system comprises the following key components:
+The system consists of two main parts:
 
-1. **Frontend (Not Included):** While not part of this repository, a frontend (e.g., a VS Code extension) can interact with the API to send code snippets and receive renaming suggestions.
-2. **FastAPI Backend (`main.py`):**
-    -   Provides the REST API endpoints for code renaming requests.
-    -   Handles communication with the core model.
-3. **Core Model (`model.py`):**
-    -   Loads and utilizes the fine-tuned GraphCodeBERT model.
-    -   Implements the logic for generating identifier suggestions, including both automatic and manual subtoken count selection.
-4. **Inference Logic (`inference.py`):**
-    -   Contains the core functions for generating identifier candidates (`generate_identifier_candidates`) and selecting the best candidate based on PLL (`select_best_identifier`).
-5. **API Logic (`renaming.py`):**
-    -   Defines the API endpoint (`/rename`) and request/response models.
-    -   Handles Java code parsing, identifier occurrence finding, code masking, and calling the `model.py` for prediction.
+1. **VS Code Extension (Frontend):** The extension provides the user interface within VS Code, handles user interactions, and communicates with the backend server. (`client` directory)
+2. **FastAPI Backend (Server):** The backend exposes a REST API for code analysis and suggestion generation. It loads the fine-tuned GraphCodeBERT model, performs inference, and handles Java code parsing. (`server` directory)
 
-## How it Works
+### Detailed Components:
 
-1. **Code Input:** The user provides a Java code snippet, the line and character position of the identifier to rename, and (optionally) the desired number of subtokens.
-2. **Identifier Location:** The `find_variable_at_position` function in `renaming.py` uses `javalang`'s tokenizer to efficiently find the identifier at the given position and all its occurrences within the code snippet.
-3. **Code Masking:** The `mask_code` function replaces all occurrences of the identifier with `[MASK]` tokens. The number of `[MASK]` tokens can be specified (manual mode) or dynamically adjusted (automatic mode).
-4. **Model Inference:**
-    -   The masked code is tokenized and chunked into segments suitable for the GraphCodeBERT model.
-    -   The model predicts the most likely tokens to fill in the `[MASK]` positions.
-    -   In automatic mode, `select_best_identifier` tries different numbers of subtokens and selects the suggestion with the lowest Pseudo-Perplexity (PLL), indicating the highest confidence.
-5. **Suggestion Output:** The API returns the predicted identifier name(s) and their associated probabilities (or PLL).
+*   **FastAPI Backend (`server` directory):**
+    *   Provides the REST API endpoints for code renaming requests.
+    *   Handles communication with the core model.
+*   **Core Model (`server/model.py`):**
+    *   Loads and utilizes the fine-tuned GraphCodeBERT model.
+    *   Implements the logic for generating identifier suggestions.
+*   **Inference Logic (`server/inference.py`):**
+    *   Contains the core functions from the original research paper for generating identifier candidates (`greet`) and selecting the best candidate based on PLL (`meet`).
+*   **API Logic (`server/api/renaming.py`):**
+    *   Defines the API endpoint (`/rename`) and request/response models.
+    *   Handles Java code parsing using `javalang`, identifier occurrence finding, code masking, and calling `model.py` for prediction.
+
+## How it Works (Extension)**
+
+1. **Trigger:** The user can trigger renaming in two ways:
+    *   **Manually:**
+        *   Select an identifier in a Java file.
+        *   Right-click and choose "Rename Identifier (ReNameIt)" from the context menu, or use the associated keybinding (if configured).
+        *   Alternatively, place the cursor on an identifier and use the "Refactor" code action (lightbulb icon or `Ctrl+.`).
+    *   **Automatically (Optional):**
+        *   Enable automatic renaming using the "ReNameIt: Toggle Automatic Renaming" command from the Command Palette.
+        *   Suggestions will then appear in a hover when the cursor is placed over an identifier.
+2. **Request:** The extension sends the following to the FastAPI server:
+    *   The entire Java code of the current file.
+    *   The line and character position of the selected identifier.
+    *   The desired number of subtokens for the new name (`-1` for automatic mode).
+3. **Server-Side Processing:**
+    *   **Identifier Location:** The `find_variable_at_position` function in `renaming.py` efficiently locates the identifier and all its occurrences using the `javalang` tokenizer.
+    *   **Code Masking:** The `mask_code` function replaces all occurrences of the identifier with `[MASK]` tokens, preparing the code for the model.
+    *   **Model Inference:** The masked code is sent to the GraphCodeBERT model for prediction. In automatic mode, the server tries different numbers of `[MASK]` tokens and selects the suggestion with the lowest Pseudo-Perplexity (PLL) using the logic in `inference.py` (`meet` function), which indicates the highest confidence.
+4. **Suggestion Display:** The server returns a list of suggested identifier names and their probabilities (or PLL values). The extension then displays these suggestions to the user:
+    *   **Manual Mode:** In a QuickPick menu.
+    *   **Automatic Mode:** Within a hover popup.
+5. **Application:** If the user selects a suggestion, the extension automatically replaces all occurrences of the original identifier with the selected name throughout the current file.
 
 ## Installation
 
-1. **Clone the repository:**
+### Prerequisites
+
+*   **Node.js and npm:** Install from [https://nodejs.org/](https://nodejs.org/)
+*   **Python 3.8+:**  Make sure you have Python 3.8 or higher installed.
+*   **VS Code:** Install from [https://code.visualstudio.com/](https://code.visualstudio.com/)
+*   **Postman (Optional):** For testing the API directly. Download from [https://www.postman.com/downloads/](https://www.postman.com/downloads/)
+
+### Steps
+
+1. **Clone the Repository:**
 
     ```bash
     git clone <repository_url>
     cd <repository_directory>
     ```
 
-2. **Install dependencies:**
+2. **Install Backend Dependencies:**
 
     ```bash
+    cd server
+    python3 -m venv .venv
+    source .venv/bin/activate  # On macOS/Linux
+    # .\.venv\Scripts\activate  # On Windows
     pip install -r requirements.txt
     ```
 
-3. **Download Pretrained Model:**
+3. **Install Frontend Dependencies:**
 
-    - Download the fine-tuned model state dictionary (`model_26_2`) from the provided source or use your own fine-tuned model.
-    - Place it in the `model_artifacts/` directory.
+    ```bash
+    cd ../client
+    npm install
+    ```
+
+4. **Download the Pretrained Model:**
+
+    *   Download the fine-tuned model state dictionary (`model_26_2`) from the provided source in the original paper or use your own fine-tuned model.
+    *   Place the downloaded model file(s) in the `server/model_artifacts/` directory. Ensure the path in `server/model.py` (`load_model` function) is correct.
 
 ## Usage
 
-1. **Start the FastAPI server:**
+### Running the Backend Server
 
+1. **Navigate to the `server` directory:**
+    ```bash
+    cd server
+    ```
+
+2. **Activate the virtual environment:**
+    ```bash
+    source .venv/bin/activate  # On macOS/Linux
+    # .\.venv\Scripts\activate  # On Windows
+    ```
+
+3. **Start the server:**
     ```bash
     uvicorn main:app --reload
     ```
+    The server will start on `http://127.0.0.1:8000`.
 
-2. **Send a request to the API:**
+### Running the VS Code Extension (Development Mode)
 
-    You can use tools like `curl` or `Postman` to send POST requests to the `/rename` endpoint.
-
-    **Example `curl` request:**
-
+1. **Open the `client` directory in VS Code:**
     ```bash
-    curl -X POST -H "Content-Type: application/json" -d '{
-        "code": "public class MyClass {\n    public int myVar = 10;\n    public void myMethod() {\n        int x = myVar + 5;\n        System.out.println(x);\n    }\n}",
-        "line": 3,
-        "char": 13,
-        "num_tokens": -1
-    }' http://localhost:8000/rename
+    cd ../client
+    code .
     ```
 
-    **Expected Response:**
+2. **Press F5** to start a new **Extension Development Host** window. The ReNameIt extension will be loaded in this window.
 
-    ```json
-    {
-        "suggestions": ["<suggested_name>"],
-        "probabilities": [<probability_or_pll>]
-    }
-    ```
-    -   `code`: The Java code snippet.
-    -   `line`: The line number of the identifier (1-based).
-    -   `char`: The character position of the identifier on that line (1-based).
-    -   `num_tokens`: The desired number of subtokens for the new identifier. Use `-1` for automatic mode.
+3. **Open a Java file** in the Extension Development Host window.
 
-## Example
+4. **Test the extension:**
+    *   **Code Action:** Place your cursor on an identifier and look for the lightbulb icon (or press `Ctrl+.`) to access the "Rename Identifier (ReNameIt)" code action.
+    *   **Automatic Renaming (Optional):** Use the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) to run the "ReNameIt: Toggle Automatic Renaming" command. Then, hover over identifiers to see suggestions.
 
-**Input Code:**
+
+### Configuration
+
+*   **`renameit.serverUrl`:** Specifies the URL of the FastAPI server. The default is `http://127.0.0.1:8000`. You can change this in your VS Code settings (File > Preferences > Settings, search for "ReNameIt").
+*   **`renameit.automaticRenaming`:** Enables or disables automatic renaming suggestions on hover. The default is `false`.
+
+## API Testing (Optional)
+
+You can use tools like `curl` or `Postman` to send POST requests directly to the `/rename` endpoint of the running FastAPI server.
+
+**Example `curl` request:**
+
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{
+    "code": "public class MyClass {\n    public int myVar = 10;\n    public void myMethod() {\n        int x = myVar + 5;\n        System.out.println(x);\n    }\n}",
+    "line": 3,
+    "char": 13,
+    "num_tokens": -1
+}' http://localhost:8000/rename
+```
+
+**Expected Response:**
+
+```json
+{
+    "suggestions": ["<suggested_name>"],
+    "probabilities": [<probability_or_pll>]
+}
+```
+
+## Example (Usage in VS Code)**
+
+**Input Code (in a Java file):**
 
 ```java
 public class Example {
@@ -104,59 +174,28 @@ public class Example {
         return counter;
     }
 }
-
-
-**Request:**
-
--   `line`: 2
--   `char`: 16
--   `num_tokens`: -1 (automatic mode)
-
-**Masked Code (sent to the model):**
-
-```java
-public class Example {
-    public int [MASK] = 0;
-
-    public void increment() {
-        [MASK]++;
-    }
-
-    public int getCount() {
-        return [MASK];
-    }
-}
 ```
 
-**Possible Output:**
+**Steps:**
 
-```json
-{
-    "suggestions": ["value"],
-    "probabilities": [4.56]
-}
+1. Select the identifier `counter` on line 2 (or place your cursor on it).
+2. Right-click and choose "Rename Identifier (ReNameIt)" or use the appropriate trigger for a code action or automatic renaming.
+3. The extension will send a request to the backend, and you'll see suggestions in a QuickPick menu (or in a hover if automatic mode is enabled).
+
+**Possible Output (in the QuickPick or hover):**
+
+```
+value (Probability: 4.56)
+count (Probability: 3.81)
+...other suggestions...
 ```
 
-## Limitations
+## Troubleshooting
 
--   **Java Only:** Currently supports only Java code.
--   **Context Window:** The model's context window is limited (512 tokens), so very long code snippets might be truncated, potentially affecting the accuracy of suggestions.
--   **Model Accuracy:** The accuracy of suggestions depends on the quality of the training data and the model's ability to generalize to unseen code.
--   **No Type Information:**  The model doesn't utilize explicit type information, which could be used to improve the accuracy of suggestions in some cases.
-
-## Future Work
-
--   **Support for other languages:** Extend the system to support other programming languages.
--   **Improved Model Training:**  Explore larger and more diverse training datasets, and experiment with different model architectures.
--   **Integration with IDEs:** Develop plugins for popular IDEs to provide seamless integration.
--   **User Feedback:** Implement mechanisms to collect user feedback on the quality of suggestions to further improve the model.
--   **Incorporate Type Information:** Investigate ways to incorporate type information into the model to improve the accuracy of suggestions.
-
-## Contributing
-
-Contributions are welcome! Please feel free to open issues or submit pull requests.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-```
+*   **Server not running:** Make sure the FastAPI server is running in a separate terminal.
+*   **Extension not communicating with server:** Check the `renameit.serverUrl` setting in your VS Code settings. Verify that the server URL is correct and that the server is accessible.
+*   **No suggestions provided:**
+    *   Make sure the cursor is positioned correctly on an identifier.
+    *   Check the server logs for any errors during model inference or Java parsing.
+    *   Ensure that your model is loaded correctly and that the paths in `model.py` are accurate.
+*   **Errors during model inference:**  If you encounter errors related to the model, double-check that you have downloaded the correct model files and that they are placed in the `model_artifacts` directory. Also, ensure that your `greet` and `meet` functions in `inference.py` are correctly implemented and handle different scenarios properly.
