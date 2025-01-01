@@ -3,13 +3,9 @@
 # ReNameIt: (VS Code Extension)
 
 
-## Walkthrough (VS Code Extension - dev mode)
+### Walkthrough (VS Code Extension - dev mode)
 
-<video width="640" height="360" controls>
-    <source src="misc/mov.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-</video>
-
+[![Watch the video](https://i.sstatic.net/Vp2cE.png)](https://youtu.be/hvkGQlqxshU)
 ## Architecture
 
 The system consists of two main parts:
