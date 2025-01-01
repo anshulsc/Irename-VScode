@@ -5,7 +5,7 @@
 
 ## Walkthrough (VS Code Extension - dev mode)
 
-You can watch a quick demonstration in this [YouTube Video](https://www.youtube.com/watch?v=B6PKVZq2qqo).
+You can watch a quick demonstration in this [Video](misc/mov.mp4).
 
 ## Architecture
 
@@ -67,6 +67,7 @@ The system consists of two main parts:
     ```bash
     git clone <repository_url>
     cd <repository_directory>
+    npm install -g yo generator-code
     ```
 
 2. **Install Backend Dependencies:**
